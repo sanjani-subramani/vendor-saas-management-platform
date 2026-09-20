@@ -1,0 +1,11 @@
+fastapi==0.115.6
+uvicorn[standard]
+psycopg[binary]
+pydantic-settings
+google-genai
+python-dotenv
+httpx
+apscheduler
+beautifulsoup4
+lxml
+notdiamond
