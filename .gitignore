@@ -3,6 +3,7 @@ infra/.env
 node_modules/
 ui/node_modules/
 ui/.next/
+next-env.d.ts
 __pycache__/
 *.py[cod]
 *.egg-info/
