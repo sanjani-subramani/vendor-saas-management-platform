@@ -137,6 +137,7 @@ const moduleConfigs: Record<string, ModuleConfig> = {
       { name: "website_url", label: "Website URL" },
       { name: "contact_name", label: "Contact name" },
       { name: "contact_email", label: "Contact email", type: "email" },
+      { name: "contact_phone", label: "Contact phone", type: "tel", placeholder: "+91 98765 43210" },
       { name: "status", label: "Status", type: "select", options: ["active", "inactive", "archived"] },
       { name: "soc2_certified", label: "SOC 2 Certified", type: "select", options: ["true", "false"] },
       { name: "iso27001_certified", label: "ISO 27001 Certified", type: "select", options: ["true", "false"] },
@@ -4627,6 +4628,33 @@ export default function ModulePage() {
     }
   }
 
+  async function handleCallVendor(record: any) {
+    const vendorName = String(record?.name || "this vendor");
+    const phone = String(record?.contact_phone || "").trim();
+    if (!phone) {
+      window.alert(vendorName + " has no contact phone number yet.\n\nClick Edit on this vendor, add a \"Contact phone\" (with country code, e.g. +91...), save, then press Call again.");
+      return;
+    }
+    if (!window.confirm("Call " + vendorName + "?\n\nTwilio will ring YOUR phone first. Answer it and you will be connected to " + vendorName + " at " + phone + ".")) {
+      return;
+    }
+    try {
+      const r = await fetch(`${apiBaseUrl}/api/calls/vendor/${record.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        window.alert("Call failed:\n\n" + ((data && data.detail) || r.statusText));
+        return;
+      }
+      window.alert((data && data.message) || "Call started - check your phone!");
+    } catch (e) {
+      window.alert("Call failed: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
   async function handleDelete(recordId: unknown) {
     if (!config || !recordId) return;
 
@@ -7736,6 +7764,11 @@ export default function ModulePage() {
                   <span>Export</span>
                 </button>
               ) : null}
+              {moduleKey === "vendors" ? (
+                <button type="button" title="View call recordings" onClick={() => window.open(`${apiBaseUrl}/recordings`, "_blank")}>
+                  <span>🎙️ Recordings</span>
+                </button>
+              ) : null}
               {canBulkUpload ? (
                 <>
                   <button type="button" onClick={handleDownloadTemplate} title="Download bulk upload template">
@@ -9180,6 +9213,9 @@ export default function ModulePage() {
                                   <button aria-label="Reset temporary password" className="icon-action" title="Reset temporary password" type="button" onClick={() => handleResetPassword(record.id)}>
                                     <Icon name="key" />
                                   </button>
+                                ) : null}
+                                {moduleKey === "vendors" ? (
+                                  <button aria-label="Call vendor" className="icon-action" title="Call this vendor" type="button" onClick={() => handleCallVendor(record)} style={{ fontSize: "16px", lineHeight: 1 }}>☎️</button>
                                 ) : null}
                                 <button aria-label={moduleKey === "users" ? "Remove user" : "Archive"} className="icon-action danger" title={moduleKey === "users" ? "Remove user" : "Archive"} type="button" onClick={() => handleDelete(record.id)}>
                                   <Icon name="archive" />

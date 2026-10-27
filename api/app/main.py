@@ -121,6 +121,7 @@ MODULES = {
             "website_url",
             "contact_name",
             "contact_email",
+            "contact_phone",
             "status",
             "soc2_certified",
             "iso27001_certified",
@@ -3745,6 +3746,104 @@ def update_vendor(record_id: UUID, payload: dict = Body(...), conn: Connection =
 @app.delete("/vendors/{record_id}")
 def delete_vendor(record_id: UUID, conn: Connection = Depends(get_connection)) -> dict:
     return _delete_module("vendors", record_id, conn)
+
+
+@app.get("/api/calls/status")
+def calls_status() -> dict:
+    from app.twilio_calls import get_call_status
+
+    return get_call_status()
+
+
+@app.post("/api/calls/vendor/{vendor_id}")
+def call_vendor(
+    vendor_id: UUID,
+    payload: dict = Body(default={}),
+    conn: Connection = Depends(get_connection),
+) -> dict:
+    from app.twilio_calls import place_click_to_call
+
+    vendor = _get_module("vendors", vendor_id, conn)
+    vendor_phone = str(vendor.get("contact_phone") or "").strip()
+    if not vendor_phone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This vendor has no contact phone number. Edit the vendor and add one (with country code, e.g. +91...) first.",
+        )
+    agent_number = (payload or {}).get("agent_number") or None
+    res = place_click_to_call(
+        vendor_name=str(vendor.get("name") or "the vendor"),
+        vendor_phone=vendor_phone,
+        agent_number=agent_number,
+    )
+    if res.get("status") == "FAILED":
+        detail = res.get("error") or "Call failed."
+        if res.get("code"):
+            detail = f"{detail} (Twilio code {res.get('code')})"
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)
+    return {
+        "status": res.get("status"),
+        "sid": res.get("sid"),
+        "message": f"Calling your phone now - answer it and you will be connected to {vendor.get('name')}.",
+        "ringing": res.get("to"),
+        "vendor": res.get("vendor"),
+    }
+
+
+@app.get("/api/calls/recordings")
+def list_call_recordings() -> dict:
+    from app.twilio_calls import list_recordings
+
+    return list_recordings()
+
+
+@app.get("/api/calls/recordings/{rec_sid}.mp3")
+def get_call_recording(rec_sid: str):
+    from fastapi.responses import Response
+    from app.twilio_calls import fetch_recording_media
+
+    try:
+        audio = fetch_recording_media(rec_sid)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Could not fetch recording: {e}")
+    return Response(content=audio, media_type="audio/mpeg")
+
+
+@app.get("/recordings")
+def recordings_page():
+    from fastapi.responses import HTMLResponse
+    from app.twilio_calls import list_recordings
+
+    data = list_recordings()
+    recs = data.get("recordings", [])
+    if not data.get("configured"):
+        body = "<p>Twilio is not configured.</p>"
+    elif not recs:
+        body = "<p>No call recordings yet. Make a call first, then refresh this page.</p>"
+    else:
+        cards = []
+        for r in recs:
+            cards.append(
+                "<div class=\"card\"><div class=\"meta\">"
+                f"{r.get('date_created') or ''} &middot; {r.get('duration') or '0'}s "
+                f"&middot; call {r.get('call_sid') or ''}</div>"
+                f"<audio controls preload=\"none\" src=\"/api/calls/recordings/{r.get('sid')}.mp3\"></audio>"
+                "</div>"
+            )
+        body = "".join(cards)
+    html = (
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Call Recordings</title>"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<style>body{background:#0b1120;color:#e5e7eb;font-family:system-ui,Arial,sans-serif;margin:0;padding:24px}"
+        "h1{font-size:22px;margin:0 0 4px}.sub{color:#94a3b8;margin:0 0 20px;font-size:13px}"
+        ".card{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:14px 16px;margin:0 0 12px;max-width:640px}"
+        ".meta{font-size:13px;color:#cbd5e1;margin-bottom:8px}audio{width:100%}a{color:#38bdf8}</style></head><body>"
+        "<h1>Call Recordings</h1>"
+        "<p class=\"sub\">VendorSphere click-to-call recordings from Twilio. "
+        "<a href=\"javascript:location.reload()\">Refresh</a></p>"
+        f"{body}</body></html>"
+    )
+    return HTMLResponse(content=html)
 
 
 @app.post("/vendors/autofill")

@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     notdiamond_optimize_enabled: bool = False
     copilot_mode: str = "tools"
     app_base_url: str = "http://localhost:3002"
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from_number: str = ""
+    twilio_agent_number: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
